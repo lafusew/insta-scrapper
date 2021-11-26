@@ -1,32 +1,42 @@
-/**
- * Some predefined delay values (in milliseconds).
- */
-export enum Delays {
-  Short = 500,
-  Medium = 2000,
-  Long = 5000,
-}
+import { EventEmitter } from 'events';
+import pup from 'puppeteer';
+import cookies from '../cookies.json';
+import { accounts, Person } from './constants/insta_accounts';
+import { requestInterceptionHandler, saveCookies } from './services/insta.service';
 
-/**
- * Returns a Promise<string> that resolves after a given time.
- *
- * @param {string} name - A name.
- * @param {number=} [delay=Delays.Medium] - A number of milliseconds to delay resolution of the Promise.
- * @returns {Promise<string>}
- */
-function delayedHello(
-  name: string,
-  delay: number = Delays.Medium,
-): Promise<string> {
-  return new Promise((resolve: (value?: string) => void) =>
-    setTimeout(() => resolve(`Hello, ${name}`), delay),
-  );
-}
 
-// Below are examples of using ESLint errors suppression
-// Here it is suppressing a missing return type definition for the greeter function.
+const eventEmitter = new EventEmitter();
+eventEmitter.setMaxListeners(11);
 
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-export async function greeter(name: string) {
-  return await delayedHello(name, Delays.Long);
-}
+async function runInstagramFollowsScrap(person: Person): Promise<void> {
+  let cookieUsed = false;
+  const browser = await pup.launch({ headless: false, timeout: 0 });
+
+  const page = await browser.newPage();
+  await page.setCookie(...cookies as pup.Protocol.Network.CookieParam[])
+  cookieUsed = true;
+
+  await page.goto('https://instagram.com');
+  if (!cookieUsed) await saveCookies(page, cookieUsed);
+
+  await page.goto('https://www.instagram.com/' + person.username);
+  await page.setRequestInterception(true);
+  await requestInterceptionHandler(page, person, () => eventEmitter.emit('CloseBrowser'));
+
+  await page.click(`a[href="/${person.username}/followers/"]`);
+
+  eventEmitter.on('CloseBrowser', async () => {
+    await browser.close()
+  })
+};
+
+(async () => {
+  for (const user of accounts) {
+    try {
+      await runInstagramFollowsScrap(user);
+    } catch (e) {
+      console.log(e.message);
+      eventEmitter.emit('CloseBrowser');
+    }
+  }
+})()
