@@ -1,6 +1,5 @@
 import { opendir, readFile, writeFile } from 'fs/promises';
 import { Node } from './json.node.parsing';
-
 interface Link {
   source: string,
   target: string,
